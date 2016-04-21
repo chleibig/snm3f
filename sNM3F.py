@@ -8,6 +8,7 @@ N = 40
 T = 20
 R = np.random.random(size=(S, N, T))
 
+
 def sNM3F(R, P=2, L=2):
     """Space-by-time non-negative matrix factorization
 
@@ -32,30 +33,30 @@ def sNM3F(R, P=2, L=2):
     # while (res_old - res) > 0.001:
 
     # step 2
-    G = np.transpose(np.dot(Btem, H), axes=(1, 0, 2))
+    G = np.transpose(Btem.dot(H), axes=(1, 0, 2))
     assert G.shape == (S, T, L)
-    Gmat = np.reshape(G, (S*T, L))
-    Rmat = np.reshape(np.transpose(R, axes=(0, 2, 1)), (S*T, N))
-    assert Rmat.shape == (S*T, N)
-    GtR = np.dot(Gmat.T, Rmat)
+    Gmat = np.reshape(G, (S * T, L))
+    Rmat = np.reshape(np.transpose(R, axes=(0, 2, 1)), (S * T, N))
+    assert Rmat.shape == (S * T, N)
+    GtR = Gmat.T.dot(Rmat)
     assert GtR.shape == (L, N)
-    GtGBspa = np.dot(np.dot(Gmat.T, Gmat), Bspa)
+    GtGBspa = Gmat.T.dot(Gmat).dot(Bspa)
     assert GtGBspa.shape == (L, N)
     # step 2c
     Bspa = np.multiply(Bspa, np.divide(GtR, GtGBspa))
 
-    # step) 3
-    V = np.dot(H, Bspa)
+    # step 3
+    V = H.dot(Bspa)
     assert V.shape == (S, P, N)
-    Vmat = np.reshape(np.transpose(V, axes=(0, 2, 1)), (S*N, P))
-    Rmat = np.reshape(R, (S*N, T))
-    RprimeV = np.dot(Rmat.T, Vmat)
+    Vmat = np.reshape(np.transpose(V, axes=(0, 2, 1)), (S * N, P))
+    Rmat = np.reshape(R, (S * N, T))
+    RprimeV = Rmat.T.dot(Vmat)
     assert RprimeV.shape == (T, P)
-    BtemVtV = np.dot(Btem, np.dot(Vmat.T, Vmat))
+    BtemVtV = Btem.dot(Vmat.T).dot(Vmat)
     assert BtemVtV.shape == (T, P)
     # step 3d
     Btem = np.multiply(Btem, np.divide(RprimeV, BtemVtV))
-    
+
     # step 4
 
     # step 5
