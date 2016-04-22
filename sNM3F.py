@@ -1,28 +1,32 @@
-from __future__ import division
+from __future__ import division, print_function
 import numpy as np
 
-# Simulate some test data:
-# TODO
-S = 10
-N = 40
-T = 20
-R = np.random.random(size=(S, N, T))
+EPS = np.finfo(np.float64).eps
 
 
-def sNM3F(R, P=2, L=2):
-    """Space-by-time non-negative matrix factorization
+def sNM3F(R, P, L, max_iter=10000, tolerance=1e-5):
+    """sample-based non-negative matrix tri-factorization
 
     Parameters
     ==========
 
-    R : samples-by-space-by-time data array
+    R : samples-by-time-by-space data array, (S, T, N)
     P : number of temporal modules
     L : number of spatial modules
+    max_iter: maximum number of iterations
+
+    Returns
+    =======
+
+    Btem: (T, P)
+    H: (S, P, L)
+    Bspa: (L, N)
 
     """
 
-    S, N, T = R.shape
+    S, T, N = R.shape
 
+    # 1)
     Btem = np.random.random(size=(T, P))
     H = np.random.random(size=(S, P, L))
     Bspa = np.random.random(size=(L, N))
@@ -30,44 +34,51 @@ def sNM3F(R, P=2, L=2):
     res_old = np.Inf
     res = reconstruction_error(R, Btem, H, Bspa)
 
-    # while (res_old - res) > 0.001:
+    for i in range(max_iter):
+        print('Iter: {}, reconstruction error diff: {}'.format(i,
+                                                               res_old - res))
 
-    # step 2
-    G = np.transpose(Btem.dot(H), axes=(1, 0, 2))
-    assert G.shape == (S, T, L)
-    Gmat = np.reshape(G, (S * T, L))
-    Rmat = np.reshape(np.transpose(R, axes=(0, 2, 1)), (S * T, N))
-    assert Rmat.shape == (S * T, N)
-    GtR = Gmat.T.dot(Rmat)
-    assert GtR.shape == (L, N)
-    GtGBspa = Gmat.T.dot(Gmat).dot(Bspa)
-    assert GtGBspa.shape == (L, N)
-    # step 2c
-    Bspa = np.multiply(Bspa, np.divide(GtR, GtGBspa))
+        # 2)
+        G = np.transpose(Btem.dot(H), axes=(1, 0, 2))
+        assert G.shape == (S, T, L)
+        numerator = np.einsum('ijk,ijl->kl', G, R)
+        denominator = np.einsum('kji,ijl->kl', G.T, G).dot(Bspa)
+        Bspa = np.multiply(Bspa, np.divide(numerator, denominator + EPS))
+        assert Bspa.shape == (L, N)
 
-    # step 3
-    V = H.dot(Bspa)
-    assert V.shape == (S, P, N)
-    Vmat = np.reshape(np.transpose(V, axes=(0, 2, 1)), (S * N, P))
-    Rmat = np.reshape(R, (S * N, T))
-    RprimeV = Rmat.T.dot(Vmat)
-    assert RprimeV.shape == (T, P)
-    BtemVtV = Btem.dot(Vmat.T).dot(Vmat)
-    assert BtemVtV.shape == (T, P)
-    # step 3d
-    Btem = np.multiply(Btem, np.divide(RprimeV, BtemVtV))
+        # 3)
+        V = np.einsum('ijk,kl->ijl', H, Bspa)
+        assert V.shape == (S, P, N)
+        numerator = np.einsum('ikj,ilj->kl', R, V)
+        denominator = Btem.dot(np.einsum('ikj,jli->kl', V.T, V))
+        Btem = np.multiply(Btem, np.divide(numerator, denominator + EPS))
+        assert Btem.shape == (T, P)
 
-    # step 4
+        # 4)
+        numerator = np.einsum('jk,ikm->ijm', Btem.T, R).dot(Bspa.T)
+        denominator = np.transpose(
+            Btem.T.dot(Btem).dot(H).dot(Bspa).dot(Bspa.T), axes=(1, 0, 2))
+        H = np.multiply(H, np.divide(numerator, denominator + EPS))
+        assert H.shape == (S, P, L)
 
-    # step 5
-    # res_old = res
-    # res = reconstruction_error(R, Btem, H, Bspa)
-    # TODO: normalization
+        # 5)
+        res_old = res
+        res = reconstruction_error(R, Btem, H, Bspa)
+        if (res_old - res) < tolerance:
+            print('Converged to desired tolerance, stopping.')
+            break
+        if (i + 1) == max_iter:
+            print('Maximum number of iterations reached, stopping.')
+            break
 
-    return Btem, H, Bspa
+    return normalize_and_rescale(Btem, H, Bspa)
 
 
 def reconstruction_error(R, Btem, H, Bspa):
-    pass
+    reconstruction = np.transpose(Btem.dot(H).dot(Bspa), axes=(1, 0, 2))
+    return np.linalg.norm(R - reconstruction, ord='fro', axis=(1, 2)).sum()
 
-sNM3F(R)
+
+def normalize_and_rescale(Btem, H, Bspa):
+    print('No normalization applied.')
+    return Btem, H, Bspa
